@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
 
+import main
 from main import app
+
+from router.router import CostLatencyRouter
+from providers.mock import MockProvider, CheapMockProvider
 
 
 client = TestClient(app)
@@ -17,7 +21,18 @@ def test_health_check():
     assert data["service"] == "LLM Cost-Latency Router"
 
 
-def test_route_endpoint_success():
+def test_route_endpoint_success(monkeypatch):
+    # Use mock providers for testing.
+    # This prevents pytest from calling the real OpenAI API.
+    test_router = CostLatencyRouter(
+        providers=[
+            MockProvider(),
+            CheapMockProvider(),
+        ]
+    )
+
+    monkeypatch.setattr(main, "router", test_router)
+
     response = client.post(
         "/route",
         json={
@@ -37,7 +52,17 @@ def test_route_endpoint_success():
     assert data["estimated_latency_ms"] == 250
 
 
-def test_route_endpoint_constraint_failure():
+def test_route_endpoint_constraint_failure(monkeypatch):
+    # Use mock providers for testing.
+    test_router = CostLatencyRouter(
+        providers=[
+            MockProvider(),
+            CheapMockProvider(),
+        ]
+    )
+
+    monkeypatch.setattr(main, "router", test_router)
+
     response = client.post(
         "/route",
         json={

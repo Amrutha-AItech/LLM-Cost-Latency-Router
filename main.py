@@ -6,6 +6,9 @@ from models.schemas import RouteRequest, RouteResponse
 from router.router import CostLatencyRouter
 from config.settings import LOG_LEVEL
 
+from providers.mock import MockProvider, CheapMockProvider
+from providers.openai import OpenAIProvider
+
 
 # ---------------------------------------------------------
 # Logging configuration
@@ -34,10 +37,23 @@ app = FastAPI(
 
 
 # ---------------------------------------------------------
+# Provider configuration
+# ---------------------------------------------------------
+
+providers = [
+    OpenAIProvider(),
+    MockProvider(),
+    CheapMockProvider(),
+]
+
+
+# ---------------------------------------------------------
 # Router instance
 # ---------------------------------------------------------
 
-router = CostLatencyRouter()
+router = CostLatencyRouter(
+    providers=providers
+)
 
 
 # ---------------------------------------------------------
@@ -77,7 +93,9 @@ def health_check():
     ),
 )
 def route_request(request: RouteRequest):
+
     try:
+
         response = router.route(request)
 
         logger.info(
@@ -92,7 +110,11 @@ def route_request(request: RouteRequest):
         return response
 
     except ValueError as exc:
-        logger.warning("Routing failed: %s", exc)
+
+        logger.warning(
+            "Routing failed: %s",
+            exc,
+        )
 
         raise HTTPException(
             status_code=400,
@@ -100,15 +122,20 @@ def route_request(request: RouteRequest):
         )
 
     except Exception:
-        logger.exception("Unexpected error while routing request")
+
+        logger.exception(
+            "Unexpected error while routing request"
+        )
 
         raise HTTPException(
             status_code=500,
             detail="Internal server error",
         )
 
+
 # ---------------------------------------------------------
-# Run directly with: python main.py
+# Run directly with:
+# python main.py
 # ---------------------------------------------------------
 
 if __name__ == "__main__":

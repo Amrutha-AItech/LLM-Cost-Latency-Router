@@ -2,6 +2,7 @@ import logging
 
 from models.schemas import RouteRequest, RouteResponse
 from providers.mock import MockProvider, CheapMockProvider
+from providers.openai import OpenAIProvider
 
 
 logger = logging.getLogger(__name__)
@@ -10,9 +11,17 @@ logger = logging.getLogger(__name__)
 class CostLatencyRouter:
 
     def __init__(self, providers=None):
-        self.providers = providers or [
-            MockProvider(),
+        """
+        Create a router with the supplied providers.
+
+        If no providers are supplied, the router uses the
+        default production provider set.
+        """
+
+        self.providers = providers if providers is not None else [
             CheapMockProvider(),
+            MockProvider(),
+            OpenAIProvider(),
         ]
 
     def route(self, request: RouteRequest) -> RouteResponse:
@@ -24,11 +33,23 @@ class CostLatencyRouter:
 
         for provider in self.providers:
             try:
-                estimated_cost = provider.estimate_cost(request.prompt)
+                estimated_cost = provider.estimate_cost(
+                    request.prompt
+                )
+
                 estimated_latency = provider.estimate_latency()
 
+                logger.debug(
+                    "Provider evaluated | provider=%s | model=%s | "
+                    "cost=%s | latency_ms=%s",
+                    provider.name,
+                    provider.model,
+                    estimated_cost,
+                    estimated_latency,
+                )
+
                 # -------------------------------------------------
-                # 2. Check whether provider satisfies constraints
+                # 2. Check provider constraints
                 # -------------------------------------------------
 
                 if (
@@ -53,7 +74,7 @@ class CostLatencyRouter:
                 continue
 
         # ---------------------------------------------------------
-        # 3. No provider satisfies the requested constraints
+        # 3. No eligible providers
         # ---------------------------------------------------------
 
         if not eligible_providers:
@@ -62,7 +83,7 @@ class CostLatencyRouter:
             )
 
         # ---------------------------------------------------------
-        # 4. Sort eligible providers by estimated cost
+        # 4. Sort by estimated cost
         # ---------------------------------------------------------
 
         eligible_providers.sort(
@@ -73,7 +94,12 @@ class CostLatencyRouter:
         # 5. Try providers from cheapest to most expensive
         # ---------------------------------------------------------
 
-        for provider, estimated_cost, estimated_latency in eligible_providers:
+        for (
+            provider,
+            estimated_cost,
+            estimated_latency,
+        ) in eligible_providers:
+
             try:
                 provider.generate(request.prompt)
 
@@ -107,7 +133,7 @@ class CostLatencyRouter:
                 continue
 
         # ---------------------------------------------------------
-        # 6. Providers were eligible, but generation failed
+        # 6. All eligible providers failed during generation
         # ---------------------------------------------------------
 
         raise ValueError(
