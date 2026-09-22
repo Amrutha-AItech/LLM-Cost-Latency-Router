@@ -20,6 +20,7 @@ class MockProvider(LLMProvider):
     def estimate_latency(self) -> float:
         return 100.0
 
+
 class CheapMockProvider(LLMProvider):
 
     @property
