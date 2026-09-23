@@ -1,24 +1,29 @@
 import os
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
 from providers.base import LLMProvider
 
-load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 class OpenAIProvider(LLMProvider):
 
     def __init__(self):
-        self.client = OpenAI(
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+        api_key = os.getenv("OPENAI_API_KEY")
 
-        # Initial fallback values before the first real request.
-        self._latency_ms = 500.0
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY is not configured.")
+
+        self.client = OpenAI(api_key=api_key)
+
         self._cost_usd = 0.001
+        self._latency_ms = 500.0
 
     @property
     def name(self) -> str:
@@ -29,26 +34,16 @@ class OpenAIProvider(LLMProvider):
         return "gpt-5.6-luna"
 
     def generate(self, prompt: str) -> str:
-        start_time = time.perf_counter()
+        start = time.perf_counter()
 
         response = self.client.responses.create(
             model=self.model,
             input=prompt,
         )
 
-        end_time = time.perf_counter()
-
-        # Measure actual request latency.
-        self._latency_ms = (end_time - start_time) * 1000
-
-        # Calculate actual request cost from API usage.
-        input_tokens = response.usage.input_tokens
-        output_tokens = response.usage.output_tokens
-
-        input_cost = input_tokens * 0.20 / 1_000_000
-        output_cost = output_tokens * 1.20 / 1_000_000
-
-        self._cost_usd = input_cost + output_cost
+        self._latency_ms = (
+            time.perf_counter() - start
+        ) * 1000
 
         return response.output_text
 

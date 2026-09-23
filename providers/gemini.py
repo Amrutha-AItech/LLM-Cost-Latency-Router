@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -7,7 +8,6 @@ from google import genai
 from providers.base import LLMProvider
 
 
-# Load .env from the project root
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -22,6 +22,9 @@ class GeminiProvider(LLMProvider):
 
         self.client = genai.Client(api_key=api_key)
 
+        self._cost_usd = 0.001
+        self._latency_ms = 500.0
+
     @property
     def name(self) -> str:
         return "gemini"
@@ -31,16 +34,21 @@ class GeminiProvider(LLMProvider):
         return "gemini-3.8-flash"
 
     def generate(self, prompt: str) -> str:
+        start = time.perf_counter()
+
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
         )
 
+        self._latency_ms = (
+            time.perf_counter() - start
+        ) * 1000
+
         return response.text
 
     def estimate_cost(self, prompt: str) -> float:
-        return 0.001
+        return self._cost_usd
 
     def estimate_latency(self) -> float:
-        return 500.0
-        
+        return self._latency_ms

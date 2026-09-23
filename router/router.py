@@ -1,8 +1,9 @@
 import logging
 
 from models.schemas import RouteRequest, RouteResponse
-from providers.mock import MockProvider, CheapMockProvider
+from providers.mock import CheapMockProvider, MockProvider
 from providers.openai import OpenAIProvider
+from providers.gemini import GeminiProvider
 
 
 logger = logging.getLogger(__name__)
@@ -14,25 +15,33 @@ class CostLatencyRouter:
         """
         Create a router with the supplied providers.
 
-        If no providers are supplied, the router uses the
-        default production provider set.
+        If no providers are supplied, the router uses
+        the default provider set.
         """
 
-        self.providers = providers if providers is not None else [
-            CheapMockProvider(),
-            MockProvider(),
-            OpenAIProvider(),
-        ]
+        self.providers = (
+            providers
+            if providers is not None
+            else [
+                CheapMockProvider(),
+                MockProvider(),
+                OpenAIProvider(),
+                GeminiProvider(),
+            ]
+        )
 
     def route(self, request: RouteRequest) -> RouteResponse:
+
         eligible_providers = []
 
         # ---------------------------------------------------------
-        # 1. Estimate cost and latency for every provider
+        # 1. Estimate cost and latency
         # ---------------------------------------------------------
 
         for provider in self.providers:
+
             try:
+
                 estimated_cost = provider.estimate_cost(
                     request.prompt
                 )
@@ -49,13 +58,14 @@ class CostLatencyRouter:
                 )
 
                 # -------------------------------------------------
-                # 2. Check provider constraints
+                # 2. Check constraints
                 # -------------------------------------------------
 
                 if (
                     estimated_cost <= request.max_cost
                     and estimated_latency <= request.max_latency_ms
                 ):
+
                     eligible_providers.append(
                         (
                             provider,
@@ -65,25 +75,25 @@ class CostLatencyRouter:
                     )
 
             except Exception as exc:
+
                 logger.warning(
                     "Provider '%s' failed during estimation: %s",
                     provider.name,
                     exc,
                 )
 
-                continue
-
         # ---------------------------------------------------------
-        # 3. No eligible providers
+        # 3. No provider satisfies requirements
         # ---------------------------------------------------------
 
         if not eligible_providers:
+
             raise ValueError(
                 "No provider satisfies the cost and latency requirement."
             )
 
         # ---------------------------------------------------------
-        # 4. Sort by estimated cost
+        # 4. Cheapest provider first
         # ---------------------------------------------------------
 
         eligible_providers.sort(
@@ -91,7 +101,7 @@ class CostLatencyRouter:
         )
 
         # ---------------------------------------------------------
-        # 5. Try providers from cheapest to most expensive
+        # 5. Try providers in cost order
         # ---------------------------------------------------------
 
         for (
@@ -101,7 +111,10 @@ class CostLatencyRouter:
         ) in eligible_providers:
 
             try:
-                provider.generate(request.prompt)
+
+                provider.generate(
+                    request.prompt
+                )
 
                 logger.info(
                     "Provider selected | provider=%s | model=%s | "
@@ -118,12 +131,13 @@ class CostLatencyRouter:
                     estimated_cost=estimated_cost,
                     estimated_latency_ms=estimated_latency,
                     reason=(
-                        "Cheapest eligible provider selected within "
-                        "cost and latency constraints."
+                        "Cheapest eligible provider selected "
+                        "within cost and latency constraints."
                     ),
                 )
 
             except Exception as exc:
+
                 logger.warning(
                     "Provider '%s' failed during generation: %s",
                     provider.name,
@@ -133,7 +147,7 @@ class CostLatencyRouter:
                 continue
 
         # ---------------------------------------------------------
-        # 6. All eligible providers failed during generation
+        # 6. All eligible providers failed
         # ---------------------------------------------------------
 
         raise ValueError(
